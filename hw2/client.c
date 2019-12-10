@@ -141,6 +141,10 @@ void send_msg(char *prompt, int socket_fd, struct sockaddr_in *address, char* us
 	while(fgets(message, MESSAGE_BUFF, stdin)!=NULL){
 		printf("%s",prompt);
 		if((strncmp(message, "/quit", 5) ==0) || (strncmp(message, "/q", 2) == 0)){
+<<<<<<< HEAD
+=======
+			send(socket_fd, message, strlen(message), 0);
+>>>>>>> v2
 			printf("Close connection...\n");
 			exit(0);
 		}

@@ -198,7 +198,11 @@ void receive_send(int n){
 			msg_rcv[length] = 0;
 
 			// quit
+<<<<<<< HEAD
 			if(strcmp(msg_rcv, "/quit") == 0 || strcmp(msg_rcv, "/q") == 0){
+=======
+			if(strncmp(msg_rcv, "/quit", 5) == 0 || strncmp(msg_rcv, "/q", 2) == 0){
+>>>>>>> v2
 				printf("%s quitted\n", user_name);
 				close(connect_fd[n]);
 				connect_fd[n] = -1;
