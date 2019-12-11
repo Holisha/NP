@@ -344,6 +344,7 @@ int main(){
 	memset(user, '\0', sizeof(user));
 	printf("Initialize\n");
 
+	usage();
 	// wait for client
 	while(1){
 		sock_len = sizeof(client_addr);
