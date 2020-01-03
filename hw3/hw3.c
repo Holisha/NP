@@ -13,93 +13,9 @@
 #include <arpa/inet.h>
 #include <time.h>
 #include <pcap.h>
+#include "handler.h"
 
-#define OFFMASK 0x1fff
-#define MAX_IP 100
-#define FILE_LEN 20
-#define MAC_ADDLEN 18
-typedef unsigned char u_char;
-
-typedef struct{
-    int num;
-    char* IP;
-}counter;
-
-char *mac_ntoa(u_char *d) {
-    static char str[MAC_ADDLEN];
-
-    snprintf(str, sizeof(str), "%02x:%02x:%02x:%02x:%02x:%02x", d[0], d[1], d[2], d[3], d[4], d[5]);
-
-    return str;
-}
-
-char *ip_ttoa(u_int8_t flag) {
-    static int f[] = {'1', '1', '1', 'D', 'T', 'R', 'C', 'X'};
-#define TOS_MAX (sizeof(f)/sizeof(f[0]))
-    static char str[TOS_MAX + 1];
-    u_int8_t mask = 1 << 7;
-    int i;
-
-    for(i = 0 ; i < TOS_MAX ; i++) {
-        if(mask & flag)
-            str[i] = f[i];
-        else
-            str[i] = '-';
-        mask >>= 1;
-    }
-    str[i] = 0;
-
-    return str;
-}
-
-char *ip_ftoa(u_int16_t flag) {
-    static int f[] = {'R', 'D', 'M'};
-#define IP_FLG_MAX (sizeof(f)/sizeof(f[0]))
-    static char str[IP_FLG_MAX + 1];
-    u_int16_t mask = 1 << 15;
-    int i;
-
-    for(i = 0 ; i < IP_FLG_MAX ; i++) {
-        if(mask & flag)
-            str[i] = f[i];
-        else
-            str[i] = '-';
-        mask >>= 1;
-    }
-    str[i] = 0;
-
-    return str;
-}
-// tcp ,udp handler
-void dump_tcp(u_int32_t length, const u_char *content) {
-	struct ip *ip = (struct ip *)(content + ETHER_HDR_LEN);
-    struct tcphdr *tcp = (struct tcphdr *)(content + ETHER_HDR_LEN + (ip->ip_hl << 2));
-    // determine endianness
-	u_int16_t source_port = ntohs(tcp->th_sport);
-    u_int16_t destination_port = ntohs(tcp->th_dport);
-	printf("Protocol: TCP\n");
-    printf("+-------------------------+-------------------------+\n");
-    printf("| Source Port:       %5u| Destination Port:  %5u|\n", source_port, destination_port);
-    printf("+-------------------------+-------------------------+\n");
-}
-
-void dump_udp(u_int32_t length, const u_char *content) {
-    struct ip *ip = (struct ip *)(content + ETHER_HDR_LEN);
-    struct udphdr *udp = (struct udphdr *)(content + ETHER_HDR_LEN + (ip->ip_hl << 2));
-    // determine endianness
-    u_int16_t source_port = ntohs(udp->uh_sport);
-    u_int16_t destination_port = ntohs(udp->uh_dport);
-    u_int16_t len = ntohs(udp->uh_ulen);
-    u_int16_t checksum = ntohs(udp->uh_sum);
-
-    printf("Protocol: UDP\n");
-    printf("+-------------------------+-------------------------+\n");
-    printf("| Source Port:       %5u| Destination Port:  %5u|\n", source_port, destination_port);
-    printf("+-------------------------+-------------------------+\n");
-    printf("| Length:            %5u| Checksum:          %5u|\n", len, checksum);
-    printf("+-------------------------+-------------------------+\n");
-}
-
+Counter counter[MAX_IP];
 
 int main(int argc, char **argv){
     int i,cnt=0;
@@ -124,15 +40,11 @@ int main(int argc, char **argv){
 
     char src_ip[INET_ADDRSTRLEN];   // source IP
     char dst_ip[INET_ADDRSTRLEN];   // destination IP
-    counter src_counter[MAX_IP];
-    counter dst_counter[MAX_IP];
+    
     for(i = 0; i < MAX_IP; i++){
-        src_counter[i].num = 0;
-        dst_counter[i].num = 0;
-        src_counter[i].IP = NULL;
-        dst_counter[i].IP = NULL;
-        //memset(src_counter[i].IP, '\0', INET_ADDRSTRLEN);
-        //memset(dst_counter[i].IP, '\0', INET_ADDRSTRLEN);
+        counter[i].num = 0;
+        memset(counter[i].srcIP, '\0', INET_ADDRSTRLEN);
+        memset(counter[i].dstIP, '\0', INET_ADDRSTRLEN);
     }
 
     u_char *packet;
@@ -204,29 +116,7 @@ int main(int argc, char **argv){
 			printf("+---------------------------------------------------+\n");
 
 			// record source IP and destination IP
-			for(i=0; i < MAX_IP; i++){
-                if(src_counter[i].IP == NULL){
-                    src_counter[i].IP = strdup(src_ip);
-                    src_counter[i].num++;
-                    break;
-                }
-                else if(strcmp(src_ip, src_counter[i].IP) == 0){
-                    src_counter[i].num++;
-                    break;
-                }
-            }
-
-            for(i=0; i < MAX_IP; i++){
-                if(dst_counter[i].IP == NULL){
-                    dst_counter[i].IP = strdup(dst_ip);
-                    dst_counter[i].num++;
-                    break;
-                }
-                else if(strcmp(dst_ip, dst_counter[i].IP) == 0){
-                    dst_counter[i].num++;
-                    break;
-                }
-            }
+            IP_count(src_ip, dst_ip);
 
 			// handle UDP and TCP
 			switch (protocol) {
@@ -238,31 +128,19 @@ int main(int argc, char **argv){
 					dump_tcp(header->caplen, packet);
 					break;
 			}
-		} else  if (ntohs(eth_header->ether_type) == ETHERTYPE_ARP) {
+		}
+		else if(ntohs(eth_header->ether_type) == ETHERTYPE_ARP){
 			printf("ARP\n");
-		} else  if (ntohs(eth_header->ether_type) == ETHERTYPE_REVARP) {
+		}
+		else if(ntohs(eth_header->ether_type) == ETHERTYPE_REVARP){
 			printf("Reverse ARP\n");
-		}else{
+		}
+		else{
 			printf("not support\n");
 		}
 	}
 
-    //printf("\ncount\n");
-    // print num
-    cnt = 0;
-    printf("---------------Source IP record---------------\n");
-    for(i = 0; i < MAX_IP && src_counter[i].IP != NULL; i++){
-        printf("%s : %d\n",src_counter[i].IP, src_counter[i].num);
-        cnt += src_counter[i].num;
-    }
-    printf("The count of source IP: %d\n", cnt);
-    cnt = 0;
-    printf("------------Destination IP record-------------\n");
-    for(i = 0; i < MAX_IP && dst_counter[i].IP != NULL; i++){
-        printf("%s : %d\n",dst_counter[i].IP, dst_counter[i].num);
-        cnt += dst_counter[i].num;
-    }
-    printf("The count of destination IP: %d\n", cnt);
-
+    record_counter();
+    
     return 0;
 }
